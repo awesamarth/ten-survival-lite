@@ -6,7 +6,6 @@ import { createAppKit, useAppKitTheme } from '@reown/appkit/react'
 import { foundry, megaethTestnet } from '@reown/appkit/networks'
 import React, { ReactNode, useEffect, useState } from 'react'
 import { cookieToInitialState, WagmiProvider } from 'wagmi'
-import { useTheme } from 'next-themes'
 
 // Set up queryClient
 const queryClient = new QueryClient()
@@ -23,20 +22,6 @@ const metadata = {
   icons: ['https://avatars.githubusercontent.com/u/179229932']
 }
 
-// Theme synchronization component
-function ThemeSynchronizer() {
-  const { resolvedTheme } = useTheme()
-  const { setThemeMode } = useAppKitTheme()
-
-  useEffect(() => {
-    console.log(resolvedTheme)
-    if (resolvedTheme) {
-      setThemeMode(resolvedTheme === 'dark' ? 'dark' : resolvedTheme === 'doom' ? "dark" : 'light')
-    }
-  }, [resolvedTheme, setThemeMode])
-
-  return null
-}
 
 
 function ContextProvider({ children, cookies }: { children: ReactNode; cookies: string | null }) {
@@ -66,7 +51,7 @@ function ContextProvider({ children, cookies }: { children: ReactNode; cookies: 
           '--w3m-font-family': 'var(--font-geist-sans)',
           '--w3m-z-index': 9999,
         },
-        themeMode: 'light'
+        themeMode: 'dark'
       })
     }
 
@@ -89,7 +74,6 @@ function ContextProvider({ children, cookies }: { children: ReactNode; cookies: 
   return (
     <WagmiProvider config={wagmiAdapter.wagmiConfig} initialState={initialState}>
       <QueryClientProvider client={queryClient}>
-        <ThemeSynchronizer />
         {children}
       </QueryClientProvider>
     </WagmiProvider>
