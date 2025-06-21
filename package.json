@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "deploy-contracts": "cd foundry-proj && forge script script/Survival.s.sol:DeployScript --rpc-url http://localhost:8545 --broadcast &&  cd .."
   },
   "dependencies": {
     "@reown/appkit": "^1.7.10",
@@ -18,6 +19,7 @@
     "next": "15.3.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "rlp": "^3.0.0",
     "tailwind-merge": "^3.3.1",
     "viem": "^2.31.3",
     "wagmi": "^2.15.6"

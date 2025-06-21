@@ -1,9 +1,9 @@
 'use client'
 
-import { wagmiAdapter, projectId } from '@/config'
+import { wagmiAdapter, projectId, tenTestnet } from '@/config'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createAppKit, useAppKitTheme } from '@reown/appkit/react'
-import { foundry, megaethTestnet } from '@reown/appkit/networks'
+import { foundry } from '@reown/appkit/networks'
 import React, { ReactNode, useEffect, useState } from 'react'
 import { cookieToInitialState, WagmiProvider } from 'wagmi'
 
@@ -36,13 +36,9 @@ function ContextProvider({ children, cookies }: { children: ReactNode; cookies: 
       createAppKit({
         adapters: [wagmiAdapter],
         projectId: projectId!, // Add the ! here
-        networks: [megaethTestnet, foundry],
-        defaultNetwork: megaethTestnet,
+        networks: [tenTestnet, foundry],
+        defaultNetwork: tenTestnet,
         metadata: metadata,
-        features: {
-          email: false,
-          socials: ['google'],
-        },
         themeVariables: {
           '--w3m-accent': '#333333',
           '--w3m-color-mix': '#000000',

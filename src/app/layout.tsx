@@ -6,6 +6,7 @@ import "./globals.css";
 // import { Footer } from "@/components/Footer";
 import ContextProvider from "@/context";
 import { useAppKitTheme } from "@reown/appkit/react";
+import Navbar from "@/components/Navbar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,8 +27,8 @@ const pressStart2P = Press_Start_2P({
 
 
 export const metadata: Metadata = {
-  title: "Samarth Saxena | Portfolio",
-  description: "Portfolio showcasing my dev work and content",
+  title: "TEN Survival",
+  description: "cool game",
 };
 
 
@@ -47,7 +48,7 @@ export default async function RootLayout({
 
           <ContextProvider cookies={cookies}>
 
-            {/* <Navbar /> */}
+            <Navbar />
             {children}
             {/* <Footer /> */}
           </ContextProvider>
