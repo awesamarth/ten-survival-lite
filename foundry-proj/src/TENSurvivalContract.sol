@@ -34,7 +34,7 @@ contract SurvivalContract {
     uint public totalPlayerCount;
     ISurvivalToken public survivalTokenContract;
 
-    mapping(address => GameConfigForPlayer) public addressToGameConfig;
+    mapping(address => GameConfigForPlayer) private addressToGameConfig;
     mapping(address => bool) public registered;
 
     uint constant gameFee = 9 ether;
@@ -91,14 +91,13 @@ contract SurvivalContract {
         survivalTokenContract.transferFrom(msg.sender, address(this), gameFee);
 
         // uint256 baseRandom = 123456789;
-        uint256 baseRandom = uint256(block.prevrandao); // Use TEN's secure randomness
+        uint256 baseRandom = uint256(block.prevrandao); 
 
         GameConfigForPlayer storage config = addressToGameConfig[msg.sender];
         config.playerAddress = msg.sender;
         config.randomness = baseRandom;
         config.detonateAllIndex = baseRandom % 4;
 
-        // Use different bit positions for better distribution while maintaining privacy
         config.ai1Decision = (baseRandom >> 1) % 2 == 1;
         config.ai2Decision = (baseRandom >> 17) % 2 == 1;
         config.ai3Decision = (baseRandom >> 33) % 2 == 1;
@@ -293,9 +292,4 @@ contract SurvivalContract {
         survivalTokenContract = ISurvivalToken(_newTokenAddress);
     }
 
-    function getGameConfig(
-        address player
-    ) external view returns (GameConfigForPlayer memory) {
-        return addressToGameConfig[player];
-    }
 }

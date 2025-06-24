@@ -28,6 +28,7 @@ export default function SessionDemoPage() {
     return unsubscribe
   }, [])
 
+  console.log("here is the walletclient transport ", walletClient)
   // Update balance when session key is available and walletClient is ready
   useEffect(() => {
     if (sessionState.sessionKey && walletClient) {

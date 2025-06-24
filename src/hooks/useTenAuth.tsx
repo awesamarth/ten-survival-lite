@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount } from 'wagmi'
+import { useAccount, useChainId } from 'wagmi'
 
 interface TenAuthState {
   isAuthenticated: boolean
@@ -12,6 +12,7 @@ interface TenAuthState {
 
 export const useTenAuth = () => {
   const { address, isConnected } = useAccount()
+  const chainId = useChainId()
   const [authState, setAuthState] = useState<TenAuthState>({
     isAuthenticated: false,
     isLoading: true,
@@ -32,14 +33,34 @@ export const useTenAuth = () => {
       return
     }
 
+    // Skip TEN authentication for Foundry (chainId 31337)
+    if (chainId === 31337) {
+      setAuthState({
+        isAuthenticated: true,
+        isLoading: false,
+        encryptionToken: 'foundry-bypass',
+        error: null
+      })
+      return
+    }
+
     try {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }))
       
-      // Use the hardcoded global encryption token
-      const globalToken = '0xf0de535ead5811a9f13a69bb2ae759e1ba5d3a4b'
+      // Check if we have a stored token
+      const storedToken = localStorage.getItem('ten_encryption_token')
+      if (!storedToken) {
+        setAuthState({
+          isAuthenticated: false,
+          isLoading: false,
+          encryptionToken: null,
+          error: null
+        })
+        return
+      }
       
-      // Check if current address is authenticated with the global token
-      const response = await fetch(`${TEN_GATEWAY_URL}/query?token=${globalToken}&a=${address}`)
+      // Check if current address is authenticated with the stored token
+      const response = await fetch(`${TEN_GATEWAY_URL}/query?token=${storedToken}&a=${address}`)
       
       if (response.ok) {
         const result = await response.json()
@@ -48,14 +69,15 @@ export const useTenAuth = () => {
           setAuthState({
             isAuthenticated: true,
             isLoading: false,
-            encryptionToken: globalToken,
+            encryptionToken: storedToken,
             error: null
           })
           return
         }
       }
 
-      // Not authenticated
+      // Token invalid, remove it
+      localStorage.removeItem('ten_encryption_token')
       setAuthState({
         isAuthenticated: false,
         isLoading: false,
@@ -78,19 +100,33 @@ export const useTenAuth = () => {
       throw new Error('Wallet not connected')
     }
 
+    // Skip TEN authentication for Foundry (chainId 31337)
+    if (chainId === 31337) {
+      setAuthState({
+        isAuthenticated: true,
+        isLoading: false,
+        encryptionToken: 'foundry-bypass',
+        error: null
+      })
+      return
+    }
+
     try {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }))
 
-      // Step 1: Use the hardcoded global encryption token
-      const encryptionToken = '0xf0de535ead5811a9f13a69bb2ae759e1ba5d3a4b'
-
-      // Step 2: Create EIP712 message with encryption token
-      const provider = await (window as any).ethereum
-      if (!provider) {
-        throw new Error('No wallet provider found')
+      // Step 1: Get encryption token
+      const joinResponse = await fetch(`${TEN_GATEWAY_URL}/join`)
+      if (!joinResponse.ok) {
+        throw new Error('Failed to get encryption token')
       }
+      const encryptionToken = await joinResponse.text()
 
-      // Create the standard TEN Gateway EIP712 message
+      // Step 2: Create EIP712 message (hardcoded structure from TEN Gateway website)
+      // Ensure token has 0x prefix and is lowercase (Ethereum address format)
+      const formattedToken = encryptionToken.startsWith('0x') ? 
+        encryptionToken.toLowerCase() : 
+        `0x${encryptionToken.toLowerCase()}`
+      
       const message = {
         domain: {
           name: "Ten",
@@ -99,7 +135,7 @@ export const useTenAuth = () => {
           verifyingContract: "0x0000000000000000000000000000000000000000"
         },
         message: {
-          "Encryption Token": encryptionToken
+          "Encryption Token": formattedToken
         },
         primaryType: "Authentication",
         types: {
@@ -116,12 +152,15 @@ export const useTenAuth = () => {
       }
 
       // Step 3: Sign the EIP712 message
+      const provider = (window as any).ethereum
+      if (!provider) {
+        throw new Error('No wallet provider found')
+      }
+
       const signature = await provider.request({
         method: 'eth_signTypedData_v4',
         params: [address, JSON.stringify(message)]
       })
-
-      const type = 'EIP712'
 
       // Step 4: Authenticate with signature
       const authResponse = await fetch(`${TEN_GATEWAY_URL}/authenticate`, {
@@ -130,10 +169,9 @@ export const useTenAuth = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          token: encryptionToken,
+          token: formattedToken,
           address,
-          signature,
-          type
+          signature
         })
       })
 
@@ -141,10 +179,13 @@ export const useTenAuth = () => {
         throw new Error('Authentication failed')
       }
 
+      // Store token for future use (use formatted token)
+      localStorage.setItem('ten_encryption_token', formattedToken)
+
       setAuthState({
         isAuthenticated: true,
         isLoading: false,
-        encryptionToken,
+        encryptionToken: formattedToken,
         error: null
       })
 
@@ -162,9 +203,10 @@ export const useTenAuth = () => {
     if (!authState.encryptionToken) return
 
     try {
-      await fetch(`${TEN_GATEWAY_URL}/revoke?token=${authState.encryptionToken}`)
+      await fetch(`${TEN_GATEWAY_URL}/revoke?token=${authState.encryptionToken}`, {
+        method: 'POST'
+      })
       
-      // Remove global token
       localStorage.removeItem('ten_encryption_token')
       
       setAuthState({
@@ -180,7 +222,7 @@ export const useTenAuth = () => {
 
   useEffect(() => {
     checkAuthentication()
-  }, [address, isConnected])
+  }, [address, isConnected, chainId])
 
   return {
     ...authState,

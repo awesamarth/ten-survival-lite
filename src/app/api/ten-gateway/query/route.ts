@@ -11,12 +11,14 @@ export async function GET(request: NextRequest) {
     }
     
     const response = await fetch(`https://testnet.ten.xyz/v1/query/?token=${token}&a=${address}`)
+
     
     if (!response.ok) {
       return NextResponse.json({ error: 'Query failed' }, { status: response.status })
     }
     
     const data = await response.json()
+    console.log("response is here: ", data)
     return NextResponse.json(data)
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

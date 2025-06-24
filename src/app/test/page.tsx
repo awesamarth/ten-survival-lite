@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
-import { parseEther, formatEther } from 'viem'
+import { parseEther, formatEther, decodeEventLog } from 'viem'
 import {
   SURVIVAL_CONTRACT_ABI,
   SURVIVAL_TOKEN_ABI,
@@ -13,7 +13,7 @@ import { foundry } from 'viem/chains'
 
 export default function TestPage() {
   const { address, isConnected } = useAccount()
-  const { writeContract, data: hash, isPending } = useWriteContract()
+  const { writeContract, writeContractAsync, data: hash, isPending } = useWriteContract()
   const [selectedPosition, setSelectedPosition] = useState<number>(0)
   const [gameResult, setGameResult] = useState<{gameEnded: boolean, won: boolean, result: string} | null>(null)
 
@@ -22,7 +22,8 @@ export default function TestPage() {
     hash,
   })
 
-  console.log("address is: ", address)
+  // Events are now handled in the transaction receipt useEffect
+
 
   const { data: isRegisteredRaw, refetch: refetchRegistration} = useReadContract({
     address: LOCAL_SURVIVAL_CONTRACT_ADDRESS as `0x${string}`,
@@ -52,8 +53,6 @@ export default function TestPage() {
     query: { enabled: !!address }
   })
 
-  console.log("ye dekh gameConfig for address: ", address)
-  console.log(gameConfig)
 
 
 
@@ -69,23 +68,33 @@ export default function TestPage() {
 
   const handleStartGame = async () => {
     console.log('🚀 Starting game with position:', selectedPosition)
-    // Don't clear gameResult here - let the useEffect handle it after success
+    setGameResult(null) // Clear previous results
     
-    writeContract({
-      address: LOCAL_SURVIVAL_CONTRACT_ADDRESS as `0x${string}`,
-      abi: SURVIVAL_CONTRACT_ABI,
-      functionName: 'startGame',
-      args: [selectedPosition]
-    })
+    try {
+      writeContract({
+        address: LOCAL_SURVIVAL_CONTRACT_ADDRESS as `0x${string}`,
+        abi: SURVIVAL_CONTRACT_ABI,
+        functionName: 'startGame',
+        args: [selectedPosition]
+      })
+    } catch (error) {
+      console.error('Error starting game:', error)
+    }
   }
 
   const handleMakeChoice = async (detonate: boolean) => {
-    writeContract({
-      address: LOCAL_SURVIVAL_CONTRACT_ADDRESS as `0x${string}`,
-      abi: SURVIVAL_CONTRACT_ABI,
-      functionName: 'makeChoice',
-      args: [detonate]
-    })
+    console.log('🎯 Making choice:', detonate ? 'DETONATE' : 'PASS')
+    
+    try {
+      writeContract({
+        address: LOCAL_SURVIVAL_CONTRACT_ADDRESS as `0x${string}`,
+        abi: SURVIVAL_CONTRACT_ABI,
+        functionName: 'makeChoice',
+        args: [detonate]
+      })
+    } catch (error) {
+      console.error('Error making choice:', error)
+    }
   }
 
   // Refresh data after successful transactions
@@ -96,46 +105,58 @@ export default function TestPage() {
     refetchGameConfig()
   }
 
-  // Auto-refresh when transaction succeeds
   useEffect(() => {
     if (isSuccess && receipt && hash) {
       console.log('✅ Transaction successful, refreshing data')
-      console.log('📄 Receipt:', receipt)
+      console.log('📋 Receipt logs:', receipt.logs)
       
-      // Only set game result if we're coming from a startGame transaction
-      // We can check this by seeing if we have a gameResult already set
-      if (!gameResult) {
-        console.log('🎯 Selected position was:', selectedPosition)
+      // Look for GameEnded events in transaction receipt
+      receipt.logs.forEach((log, index) => {
+        console.log(`📄 Log ${index}:`, log)
         
-        // For hardcoded randomness, we know the outcome
-        // detonateAllIndex = 123456789 % 4 = 1
-        // ai1Decision = (123456789 >> 8) % 2 = 1
-        // So AI at position 1 always detonates
-        
-        console.log('🔥 Setting game result...')
-        if (selectedPosition > 1) {
-          setGameResult({
-            gameEnded: true,
-            won: false,
-            result: `AI at position 1 detonated (you were at position ${selectedPosition})`
-          })
-          console.log('🔥 Game result set - you lost')
-        } else if (selectedPosition === 1) {
-          setGameResult({
-            gameEnded: true,
-            won: true,
-            result: `You had the detonate button and won!`
-          })
-          console.log('🔥 Game result set - you won')
-        } else {
-          setGameResult({
-            gameEnded: true,
-            won: false,
-            result: `AI at position 1 detonated`
-          })
-          console.log('🔥 Game result set - AI detonated')
+        // Check if this is from our SurvivalContract
+        if (log.address.toLowerCase() === LOCAL_SURVIVAL_CONTRACT_ADDRESS.toLowerCase()) {
+          console.log('🎯 Found SurvivalContract event!', log.topics, log.data)
+          
+          try {
+            // Decode the event log properly using viem
+            const decodedEvent = decodeEventLog({
+              abi: SURVIVAL_CONTRACT_ABI,
+              data: log.data,
+              topics: log.topics as any
+            })
+            
+            console.log('🎉 Decoded event:', decodedEvent)
+            
+            if (decodedEvent.eventName === 'GameEnded') {
+              const { won, tokensEarned, actor, actionType } = decodedEvent.args as any;
+              console.log('🎯 GameEnded args:', { won, tokensEarned, actor, actionType })
+              
+              // Construct result message
+              let result = '';
+              if (actor === 'You' && actionType === 'special-button') {
+                result = 'You won by detonating everyone!';
+              } else if (actor === 'You' && actionType === 'self-destruct') {
+                result = 'You detonated yourself!';
+              } else if (actionType === 'special-button') {
+                result = `${actor} detonated everyone`;
+              } else if (actionType === 'self-destruct') {
+                result = `${actor} detonated themselves - you survived!`;
+              } else if (actionType === 'passed') {
+                result = 'Everyone passed - you survived!';
+              }
+
+              setGameResult({
+                gameEnded: true,
+                won: Boolean(won),
+                result
+              });
+            }
+          } catch (error) {
+            console.error('❌ Error decoding event:', error)
+          }
         }
-      }
+      })
       
       refreshData()
     }
@@ -157,8 +178,7 @@ export default function TestPage() {
   const isGameActive = gameConfig ? (gameConfig as any).gameActive : false
   const hasActiveGame = isGameActive
   
-  console.log('🎮 isGameActive:', isGameActive)
-  console.log('🎮 hasActiveGame:', hasActiveGame)
+
 
   return (
     <div className="min-h-screen bg-[#0e0e0e] pt-24">
@@ -256,7 +276,7 @@ export default function TestPage() {
                         disabled={isPending || isConfirming}
                         className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
                       >
-                        {isPending || isConfirming ? 'Starting Game...' : 'Start Game (10 SRV)'}
+                        {isPending || isConfirming ? 'Starting Game...' : 'Start Game (9 SRV)'}
                       </button>
                     </>
                   )}
@@ -289,32 +309,86 @@ export default function TestPage() {
           {/* Game Config Debug */}
           {gameConfig && (
             <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
-              <h3 className="text-xl font-bold text-white mb-4">Game Config (Debug)</h3>
-              <div className="text-sm text-gray-300 space-y-1">
-                <p>Player: {(gameConfig as any).playerAddress || 'N/A'}</p>
-                <p>Detonate All Index: {(gameConfig as any).detonateAllIndex?.toString() || 'N/A'}</p>
-                <p>AI1 Decision: {(gameConfig as any).ai1Decision?.toString() || 'N/A'}</p>
-                <p>AI2 Decision: {(gameConfig as any).ai2Decision?.toString() || 'N/A'}</p>
-                <p>AI3 Decision: {(gameConfig as any).ai3Decision?.toString() || 'N/A'}</p>
-                <p>Game Active: {(gameConfig as any).gameActive ? 'Yes' : 'No'}</p>
-                <p>Player Position: {(gameConfig as any).playerPosition?.toString() || 'N/A'}</p>
+              <h3 className="text-xl font-bold text-white mb-4">Game Config & AI Positions</h3>
+              <div className="space-y-4">
+                {/* Position Grid */}
+                <div className="grid grid-cols-4 gap-2">
+                  {[0, 1, 2, 3].map((pos) => {
+                    const config = gameConfig as any;
+                    const isPlayer = Number(config.playerPosition) === pos;
+                    const isDetonateAll = Number(config.detonateAllIndex) === pos;
+                    
+                    // Calculate which AI is at this position
+                    let aiNumber = -1;
+                    let aiDecision = 0;
+                    
+                    if (!isPlayer) {
+                      // Count how many non-player positions come before this one
+                      let aiCount = 0;
+                      for (let i = 0; i < pos; i++) {
+                        if (i !== Number(config.playerPosition)) {
+                          aiCount++;
+                        }
+                      }
+                      aiNumber = aiCount + 1; // AI1, AI2, AI3
+                      
+                      // Get the decision for this AI
+                      if (aiNumber === 1) aiDecision = Number(config.ai1Decision);
+                      else if (aiNumber === 2) aiDecision = Number(config.ai2Decision);
+                      else if (aiNumber === 3) aiDecision = Number(config.ai3Decision);
+                    }
+                    
+                    return (
+                      <div 
+                        key={pos}
+                        className={`p-3 rounded-lg border-2 text-center ${
+                          isPlayer 
+                            ? 'border-blue-500 bg-blue-900/30' 
+                            : 'border-gray-600 bg-gray-800/30'
+                        }`}
+                      >
+                        <div className="text-white font-bold">Position {pos}</div>
+                        <div className="text-sm mt-1">
+                          {isPlayer ? (
+                            <span className="text-blue-300">👤 YOU</span>
+                          ) : (
+                            <span className="text-gray-300">
+                              {aiNumber === 1 ? '👩 Alice' : aiNumber === 2 ? '👨 Bob' : '👦 Charlie'}
+                            </span>
+                          )}
+                        </div>
+                        {isDetonateAll && (
+                          <div className="text-xs text-red-400 mt-1">⭐ Special Button</div>
+                        )}
+                        {!isPlayer && (
+                          <div className={`text-xs mt-1 ${aiDecision === 1 ? 'text-red-400' : 'text-green-400'}`}>
+                            {aiDecision === 1 ? 
+                              (isDetonateAll ? '💥 Will Kill Everyone' : '💀 Will Self-Destruct') : 
+                              '🤝 Will Pass'
+                            }
+                          </div>
+                        )}
+                        {!isPlayer && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Raw: {aiNumber === 1 ? Number(config.ai1Decision) : aiNumber === 2 ? Number(config.ai2Decision) : Number(config.ai3Decision)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Additional Info */}
+                <div className="text-sm text-gray-300 space-y-1 border-t border-gray-700 pt-3">
+                  <p>Player: {(gameConfig as any).playerAddress || 'N/A'}</p>
+                  <p>Detonate Button at Position: {(gameConfig as any).detonateAllIndex?.toString() || 'N/A'}</p>
+                  <p>Game Active: {(gameConfig as any).gameActive ? 'Yes' : 'No'}</p>
+                  <p>Randomness: {(gameConfig as any).randomness?.toString() || 'N/A'}</p>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Transaction Status */}
-          {(isPending || isConfirming) && (
-            <div className="bg-blue-900 border border-blue-700 rounded-lg p-4">
-              <p className="text-blue-200">
-                {isPending ? 'Confirming transaction...' : 'Transaction confirmed!'}
-              </p>
-              {hash && (
-                <p className="text-blue-300 text-xs mt-2 break-all">
-                  Hash: {hash}
-                </p>
-              )}
-            </div>
-          )}
 
         </div>
       </div>
