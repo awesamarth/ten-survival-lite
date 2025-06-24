@@ -22,7 +22,7 @@ export const tenTestnet = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://testnet.ten.xyz/v1/?token=REDACTED_TOKEN'],
+      http: [process.env.NEXT_PUBLIC_TEN_RPC_URL as  string],
     },
   },
   blockExplorers: {
