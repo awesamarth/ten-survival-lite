@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useChainId, useSwitchChain } from 'wagmi'
+import { useAccount, useWriteContract, useChainId, useSwitchChain } from 'wagmi'
 import { parseEther, decodeEventLog, formatEther } from 'viem'
 import { useRegistration } from '@/hooks/useRegistration'
+import { useTenReadContract } from '@/hooks/useTenReadContract'
+import { useTenWaitForReceipt } from '@/hooks/useTenWaitForReceipt'
 import Registration from '@/components/Registration'
 import StickFigure from '@/components/StickFigure'
 import { SURVIVAL_CONTRACT_ABI, SURVIVAL_TOKEN_ABI, LOCAL_SURVIVAL_CONTRACT_ADDRESS, LOCAL_SURVIVAL_TOKEN_ADDRESS, TEN_SURVIVAL_CONTRACT_ADDRESS, TEN_SURVIVAL_TOKEN_ADDRESS } from '@/constants'
@@ -16,28 +18,31 @@ export default function Home() {
   const { switchChain } = useSwitchChain()
   const { isRegistered } = useRegistration()
   const { writeContractAsync, data: hash, isPending } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, data: receipt, error: receiptError } = useTenWaitForReceipt({ hash })
+  
+
   
   // Get contract addresses based on chain ID
   const survivalContract = chainId === 443 ? TEN_SURVIVAL_CONTRACT_ADDRESS : LOCAL_SURVIVAL_CONTRACT_ADDRESS
   const survivalToken = chainId === 443 ? TEN_SURVIVAL_TOKEN_ADDRESS : LOCAL_SURVIVAL_TOKEN_ADDRESS
   
   // Read game config to check if game is active
-  const { data: gameConfig, refetch: refetchGameConfig } = useReadContract({
-    address: survivalContract as `0x${string}`,
-    abi: SURVIVAL_CONTRACT_ABI,
-    functionName: 'getGameConfig',
-    args: [address],
-    account: address,
-    query: { enabled: !!address },
-  })
+  // const { data: gameConfig, refetch: refetchGameConfig } = useTenReadContract({
+  //   address: survivalContract as `0x${string}`,
+  //   abi: SURVIVAL_CONTRACT_ABI,
+  //   functionName: 'getGameConfig',
+  //   args: [address],
+  //   account: address,
+  //   query: { enabled: !!address },
+  // })
 
   // Read SRV token balance
-  const { data: srvBalance, refetch: refetchBalance } = useReadContract({
+  const { data: srvBalance, refetch: refetchBalance } = useTenReadContract({
     address: survivalToken as `0x${string}`,
     abi: SURVIVAL_TOKEN_ABI,
     functionName: 'balanceOf',
     args: [address],
+    account: address,
     query: { enabled: !!address }
   })
   
@@ -59,7 +64,7 @@ export default function Home() {
     if (isSuccess && receipt && hash && hash !== processedHash) {
       setProcessedHash(hash)
       console.log('✅ Transaction successful')
-      console.log('📋 Receipt logs:', receipt.logs)
+
       
       let foundGameEndedEvent = false
       
@@ -84,11 +89,9 @@ export default function Home() {
                 actionType: actionType,
                 tokensEarned: Number(tokensEarned)
               };
-              console.log('🎯 Setting pendingGameResult:', gameResultData)
               setPendingGameResult(gameResultData);
               
               // Start AI progression based on actual result
-              console.log('🎬 Starting AI progression for:', actor, actionType)
               simulateAiProgressionFromResult(actor, actionType, gameResultData, selectedPosition);
             }
           } catch (error) {
@@ -109,10 +112,11 @@ export default function Home() {
         setGamePhase('results')
       }
       
-      refetchGameConfig()
+      // refetchGameConfig()
+      
       refetchBalance()
     }
-  }, [isSuccess, receipt, hash, refetchGameConfig, gamePhase, processedHash])
+  }, [isSuccess, receipt, hash, gamePhase, processedHash])
 
   // Auto switch to TEN testnet on page load
   useEffect(() => {
@@ -219,7 +223,6 @@ export default function Home() {
   };
 
   const showGameEndProgression = (finalActor: string, finalActionType: string, gameResultData?: any, playerPosition?: number) => {
-    console.log('🎭 showGameEndProgression called for:', finalActor, finalActionType, 'with data:', gameResultData, 'playerPos:', playerPosition)
     setGamePhase('waiting')
     
     // Use passed data if available, otherwise fall back to state
@@ -288,9 +291,7 @@ export default function Home() {
   }
   
   const handleFinalResultWithData = (gameResult: any) => {
-    console.log('🎯 handleFinalResultWithData called with:', gameResult)
     if (!gameResult) {
-      console.log('❌ No gameResult, returning early')
       return
     }
     
@@ -325,7 +326,6 @@ export default function Home() {
     
     setGamePhase('results')
     setAiProgress('')
-    console.log('🧹 Clearing pendingGameResult after setting results')
     setPendingGameResult(null)
     
     // Update to real balance when results show
@@ -341,7 +341,6 @@ export default function Home() {
 
   // Game handlers
   const handleLockInPosition = async () => {
-    console.log('🚀 Starting game with position:', selectedPosition)
     setGameResult(null)
     setGamePhase('locking-position')
     
@@ -371,7 +370,6 @@ export default function Home() {
   }
 
   const handleMakeChoice = async (detonate: boolean) => {
-    console.log('🎯 Making choice:', detonate ? 'DETONATE' : 'PASS')
     setGamePhase('locking-choice')
     
     try {
@@ -670,89 +668,9 @@ export default function Home() {
             </div>
           )}
 
-          {/* DEBUG: Game Config Section - Remove for production */}
-          {gameConfig ? (
-            <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
-              <h3 className="text-xl font-bold text-white mb-4">🐛 Debug: Game Config & AI Positions</h3>
-              <div className="space-y-4">
-                {/* Position Grid */}
-                <div className="grid grid-cols-4 gap-2">
-                  {[0, 1, 2, 3].map((pos) => {
-                    const config = gameConfig as any;
-                    const isPlayer = Number(config.playerPosition) === pos;
-                    const isDetonateAll = Number(config.detonateAllIndex) === pos;
-                    
-                    // Calculate which AI is at this position
-                    let aiNumber = -1;
-                    let aiDecision = 0;
-                    
-                    if (!isPlayer) {
-                      // Count how many non-player positions come before this one
-                      let aiCount = 0;
-                      for (let i = 0; i < pos; i++) {
-                        if (i !== Number(config.playerPosition)) {
-                          aiCount++;
-                        }
-                      }
-                      aiNumber = aiCount + 1; // AI1, AI2, AI3
-                      
-                      // Get the decision for this AI
-                      if (aiNumber === 1) aiDecision = Number(config.ai1Decision);
-                      else if (aiNumber === 2) aiDecision = Number(config.ai2Decision);
-                      else if (aiNumber === 3) aiDecision = Number(config.ai3Decision);
-                    }
-                    
-                    return (
-                      <div 
-                        key={pos}
-                        className={`p-3 rounded-lg border-2 text-center ${
-                          isPlayer 
-                            ? 'border-blue-500 bg-blue-900/30' 
-                            : 'border-gray-600 bg-gray-800/30'
-                        }`}
-                      >
-                        <div className="text-white font-bold">Position {pos}</div>
-                        <div className="text-sm mt-1">
-                          {isPlayer ? (
-                            <span className="text-blue-300">👤 YOU</span>
-                          ) : (
-                            <span className="text-gray-300">
-                              {aiNumber === 1 ? '👩 Alice' : aiNumber === 2 ? '👨 Bob' : '👦 Charlie'}
-                            </span>
-                          )}
-                        </div>
-                        {isDetonateAll && (
-                          <div className="text-xs text-red-400 mt-1">⭐ Special Button</div>
-                        )}
-                        {!isPlayer && (
-                          <div className={`text-xs mt-1 ${aiDecision === 1 ? 'text-red-400' : 'text-green-400'}`}>
-                            {aiDecision === 1 ? 
-                              (isDetonateAll ? '💥 Will Kill Everyone' : '💀 Will Self-Destruct') : 
-                              '🤝 Will Pass'
-                            }
-                          </div>
-                        )}
-                        {!isPlayer && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Raw: {aiNumber === 1 ? Number(config.ai1Decision) : aiNumber === 2 ? Number(config.ai2Decision) : Number(config.ai3Decision)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                {/* Additional Info */}
-                <div className="text-sm text-gray-300 space-y-1 border-t border-gray-700 pt-3">
-                  <p>Player: {(gameConfig as any).playerAddress || 'N/A'}</p>
-                  <p>Detonate Button at Position: {(gameConfig as any).detonateAllIndex?.toString() || 'N/A'}</p>
-                  <p>Game Active: {(gameConfig as any).gameActive ? 'Yes' : 'No'}</p>
-                  <p>Randomness: {(gameConfig as any).randomness?.toString() || 'N/A'}</p>
-                </div>
-              </div>
-            </div>
-          ):""}
-          {/* END DEBUG */}
+
+
+
 
         </div>
       </div>
