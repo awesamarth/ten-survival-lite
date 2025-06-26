@@ -1,12 +1,49 @@
 'use client'
 
-import { useState } from 'react'
-import { useRegistration } from '@/hooks/useRegistration'
+import { useState, useEffect } from 'react'
+import { useAccount, useWriteContract, useChainId } from 'wagmi'
+import { parseEther } from 'viem'
+import { LOCAL_SURVIVAL_CONTRACT_ADDRESS, TEN_SURVIVAL_CONTRACT_ADDRESS, SURVIVAL_CONTRACT_ABI } from '@/constants'
+import { useTenReadContract } from '@/hooks/useTenReadContract'
+import { useTenWaitForReceipt } from '@/hooks/useTenWaitForReceipt'
 
-export default function Registration() {
-  const { isRegistered, isLoading, error, register } = useRegistration()
+interface RegistrationProps {
+  onRegistrationSuccess: () => void
+}
+
+export default function Registration({ onRegistrationSuccess }: RegistrationProps) {
+  const { address } = useAccount()
+  const chainId = useChainId()
+  const { writeContractAsync } = useWriteContract()
+  
+  // Get contract address based on chain ID
+  const survivalContract = chainId === 443 ? TEN_SURVIVAL_CONTRACT_ADDRESS : LOCAL_SURVIVAL_CONTRACT_ADDRESS
+  
+  const { data: isRegisteredRaw, isLoading, error } = useTenReadContract({
+    address: survivalContract as `0x${string}`,
+    abi: SURVIVAL_CONTRACT_ABI,
+    functionName: 'registered',
+    args: [address],
+    account: address,
+    query: { enabled: !!address }
+  })
+  
+  const isRegistered = Boolean(isRegisteredRaw) ?? false
   const [isRegistering, setIsRegistering] = useState(false)
   const [txHash, setTxHash] = useState<string | null>(null)
+  
+  // Wait for registration transaction receipt
+  const { isSuccess: regSuccess } = useTenWaitForReceipt({ 
+    hash: txHash as `0x${string}` 
+  })
+  
+  // Trigger main page refetch when registration is confirmed
+  useEffect(() => {
+    if (regSuccess) {
+      console.log('✅ Registration transaction confirmed! Triggering main page refresh...')
+      onRegistrationSuccess()
+    }
+  }, [regSuccess, onRegistrationSuccess])
 
   if (isLoading) {
     return (
@@ -23,7 +60,7 @@ export default function Registration() {
         <div className="text-green-400 text-4xl mb-4">✅</div>
         <h3 className="text-xl font-bold text-white mb-2">You're Registered!</h3>
         <p className="text-green-200">
-          You have 200 SRV tokens and can start playing TEN Survival
+          You have 100 SRV tokens and can start playing TEN Survival
         </p>
       </div>
     )
@@ -33,8 +70,19 @@ export default function Registration() {
     try {
       setIsRegistering(true)
       setTxHash(null)
-      const hash = await register()
+      
+      if (!address) throw new Error('Wallet not connected')
+      
+      const hash = await writeContractAsync({
+        address: survivalContract as `0x${string}`,
+        abi: SURVIVAL_CONTRACT_ABI,
+        functionName: 'registerPlayer',
+        value: parseEther('0.01')
+      })
+      
       setTxHash(hash)
+      console.log('🚀 Registration transaction submitted:', hash)
+      // Note: onRegistrationComplete() will be called when transaction confirms
     } catch (err) {
       console.error('Registration failed:', err)
     } finally {
@@ -69,7 +117,7 @@ export default function Registration() {
 
         {error && (
           <div className="bg-red-900 border border-red-700 rounded-lg p-4">
-            <p className="text-red-200 text-sm">{error}</p>
+            <p className="text-red-200 text-sm">{error.message}</p>
           </div>
         )}
 

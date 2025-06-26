@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useChainId, useSwitchChain } from 'wagmi'
 import { parseEther, decodeEventLog, formatEther } from 'viem'
-import { useRegistration } from '@/hooks/useRegistration'
 import { useTenReadContract } from '@/hooks/useTenReadContract'
 import { useTenWaitForReceipt } from '@/hooks/useTenWaitForReceipt'
 import Registration from '@/components/Registration'
@@ -16,25 +15,28 @@ export default function Home() {
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
   const { switchChain } = useSwitchChain()
-  const { isRegistered } = useRegistration()
-  const { writeContractAsync, data: hash, isPending } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, data: receipt, error: receiptError } = useTenWaitForReceipt({ hash })
+  // Check registration status
+
   
 
   
   // Get contract addresses based on chain ID
   const survivalContract = chainId === 443 ? TEN_SURVIVAL_CONTRACT_ADDRESS : LOCAL_SURVIVAL_CONTRACT_ADDRESS
   const survivalToken = chainId === 443 ? TEN_SURVIVAL_TOKEN_ADDRESS : LOCAL_SURVIVAL_TOKEN_ADDRESS
+
+    const { data: isRegisteredRaw, isLoading: regLoading, refetch: refetchRegistration } = useTenReadContract({
+    address: survivalContract as `0x${string}`,
+    abi: SURVIVAL_CONTRACT_ABI,
+    functionName: 'registered',
+    args: [address],
+    account: address,
+    query: { enabled: !!address }
+  })
   
-  // Read game config to check if game is active
-  // const { data: gameConfig, refetch: refetchGameConfig } = useTenReadContract({
-  //   address: survivalContract as `0x${string}`,
-  //   abi: SURVIVAL_CONTRACT_ABI,
-  //   functionName: 'getGameConfig',
-  //   args: [address],
-  //   account: address,
-  //   query: { enabled: !!address },
-  // })
+  const isRegistered = Boolean(isRegisteredRaw) ?? false
+  const { writeContractAsync, data: hash, isPending } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess, data: receipt, error: receiptError } = useTenWaitForReceipt({ hash })
+  
 
   // Read SRV token balance
   const { data: srvBalance, refetch: refetchBalance } = useTenReadContract({
@@ -447,8 +449,13 @@ export default function Home() {
         </div>
 
         <div className="max-w-4xl mx-auto">
-          {!isRegistered ? (
-            <Registration />
+          {regLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-400">Checking registration status...</p>
+            </div>
+          ) : !isRegistered ? (
+            <Registration onRegistrationSuccess={() => refetchRegistration()} />
           ) : !gameStarted ? (
             <div className="bg-gray-900 rounded-lg p-8 border border-gray-800 text-center">
               <div className="mb-8">
