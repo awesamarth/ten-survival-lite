@@ -671,7 +671,7 @@ export default function Home() {
           )}
 
           {/* DEBUG: Game Config Section - Remove for production */}
-          {gameConfig && typeof gameConfig === 'object' && 'playerPosition' in gameConfig && (
+          {gameConfig ? (
             <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
               <h3 className="text-xl font-bold text-white mb-4">🐛 Debug: Game Config & AI Positions</h3>
               <div className="space-y-4">
@@ -751,7 +751,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          )}
+          ):""}
           {/* END DEBUG */}
 
         </div>
