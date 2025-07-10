@@ -135,7 +135,7 @@ export default function Registration({ onRegistrationSuccess }: RegistrationProp
         <button
           onClick={handleRegister}
           disabled={isRegistering}
-          className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center"
+          className="w-full py-3 hover:cursor-pointer bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center"
         >
           {isRegistering ? (
             <>
